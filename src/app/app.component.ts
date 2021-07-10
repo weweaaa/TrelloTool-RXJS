@@ -2,11 +2,12 @@ import { Component } from '@angular/core';
 import { TrelloBoardService } from './svc/trello-board.service';
 import { environment as env } from 'src/environments/environment';
 import { Dictionary } from './models/dictionary';
-import { of, pipe } from 'rxjs';
+import { of, pipe, Subject } from 'rxjs';
 import { concatMap, delay, map, retry, tap } from 'rxjs/operators';
 import { Label } from './models/label';
 import { Lists } from './models/lists';
 import { Checklist } from './models/check-lists';
+import { Observable } from 'rxjs';
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -30,7 +31,7 @@ export class AppComponent {
       alert("[*] 請記得到 https://trello.com/app-key/ 上取得 key 及 Token")
     }
 
-    if(!env.boardId){
+    if (!env.boardId) {
       this.checkInit = false;
       alert("[*] 請記得開啟 Trello 看板網址，複製網址上的 ID。\n  - 例如：'https://trello.com/b/oA2raDa2/Test'\n  - 則 ID 就是 【oA2raDa2】")
     }
@@ -91,7 +92,7 @@ export class AppComponent {
       );
 
       // 此段 pipe 承接到的資料流為從 setCardCheckItem 結束後帶過來的資料流
-      cardList.map(name =>  pipe(
+      cardList.map(name => pipe(
         delay(2500),
 
         // 在這裡 req 結果為 setCardCheckItem 訂閱後取得的值
@@ -101,6 +102,66 @@ export class AppComponent {
     });
 
     obs$.subscribe();
+  }
+
+  /** 另一種 使用 subject 的處理方式 */
+  RunCreateTrelloBoardData_1() {
+    const subject$ = new Subject<Observable<any>>();
+
+    // 注意位置要先訂閱，後面實作 next 才會有東西
+    subject$.pipe(concatMap(obs$ => obs$.pipe(delay(3000)))).subscribe();
+
+    env.tags
+      .map(label => this.boardSvc.setLabel(this.boardIdStr, label).pipe(tap((req: Label) => req && (this.tagsDic[req.name] = req.id))))
+      .forEach(obs$ => subject$.next(obs$));
+
+    env.lists
+      .map(list => this.boardSvc.setList(this.boardIdStr, list).pipe(tap((req: Lists) => req && (this.listsDic[req.name] = req.id))))
+      .forEach(obs$ => subject$.next(obs$));
+
+    [
+      [env.KPI, this.KPIDic],
+      [env.caseTypes, this.caseTypesDic],
+      [env.CaseCheckList1, this.CaseCheckList1_Dic],
+      [env.CaseCheckList2, this.CaseCheckList2_Dic],
+    ].forEach(([list, listDic]: [string[], Dictionary]) => {
+      list.map(name => {
+        const hascheck = env.caseTypes.includes(name);
+        const idLables = hascheck ? [this.getLabelID(name)] : null;
+
+        return of(null).pipe(
+          delay(2500),
+          map(() => this.listsDic['待辦項目'] as string),
+          concatMap(id => this.boardSvc.setListCard(id, name, idLables).pipe(retry(3))),
+          tap(req => req && (listDic[req.name] = { id: req.id, shortUrl: req.shortUrl, shortLink: req.shortLink }))
+        );
+
+      }).forEach(obs$ => subject$.next(obs$));
+    });
+
+    // 建立卡片中的待辦清單
+    [
+      ['1. Test', this.KPIDic, 'Test 待辦項目', env.caseTypes, this.caseTypesDic],
+      ['Case1', this.caseTypesDic, 'CaseCheckList1', env.CaseCheckList1, this.CaseCheckList1_Dic],
+      ['Case1', this.caseTypesDic, 'CaseCheckList2', env.CaseCheckList2, this.CaseCheckList2_Dic],
+    ].forEach(([cardName, listDic, CKName, cardList, cardDic]: [string, Dictionary, string, string[], Dictionary]) => {
+
+      const item$ = of(null).pipe(
+        delay(2500),
+        concatMap(() => this.boardSvc.setCardCheckItem(listDic[cardName]['id'], CKName).pipe(retry(3))),
+        tap((req) => {
+          // 此段 pipe 承接到的資料流為從 setCardCheckItem 結束後帶過來的資料流
+          cardList.map(name => of(req).pipe(
+            delay(2500),
+            concatMap((ck: Checklist) => this.boardSvc.setCardCheckItemCheckList(ck.id, cardDic[name]['shortUrl']).pipe(map(() => ck))),
+          )).forEach(obs$ => subject$.next(obs$));
+        })
+      );
+
+      subject$.next(item$);
+
+    });
+
   }
 
   getLabelID(naem: string): string {
