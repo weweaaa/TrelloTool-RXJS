@@ -7,12 +7,6 @@
 
 
 <ng-container *ngIf="checkInit">
-  <h2>依序往下點，相當於是一步一步驟觸發 API 發送</h2>
-  <button (click)="addLabel()">addLabel</button><br />
-  <button (click)="addList()">addList</button><br />
-  <button (click)="addKPICard()">addKPICard</button><br />
-  <button (click)="addCaseCard()">addCaseCard</button><br />
-  <button (click)="addWaitWorkCard()">addWaitWorkCard</button><br />
-  <button (click)="addCaseTypeCK()">addCaseTypeCK</button><br />
-  <button (click)="addCaseCK1()">addCaseCK1</button><br />
+  <h2>透過 RXJS 串起每個發送 API 的流程</h2>
+  <button (click)="RunCreateTrelloBoardData()">RunCreateTrelloBoardData</button><br />
 </ng-container>

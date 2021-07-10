@@ -2,8 +2,11 @@ import { Component } from '@angular/core';
 import { TrelloBoardService } from './svc/trello-board.service';
 import { environment as env } from 'src/environments/environment';
 import { Dictionary } from './models/dictionary';
-import { of } from 'rxjs';
-import { concatMap, delay } from 'rxjs/operators';
+import { of, pipe } from 'rxjs';
+import { concatMap, delay, map, retry, tap } from 'rxjs/operators';
+import { Label } from './models/label';
+import { Lists } from './models/lists';
+import { Checklist } from './models/check-lists';
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -32,138 +35,64 @@ export class AppComponent {
       alert("[*] 請記得開啟 Trello 看板網址，複製網址上的 ID。\n  - 例如：'https://trello.com/b/oA2raDa2/Test'\n  - 則 ID 就是 【oA2raDa2】")
     }
   }
-  /** 建立 案件類型 標籤 */
-  addLabel() {
-    env.tags.forEach((label: string) => {
-      const $addLabel = this.boardSvc.setLabel(this.boardIdStr, label)
-      $addLabel.subscribe(req => {
-        console.log('%c 🌽 addLabel: ', 'font-size:20px;background-color: #EA7E5C;color:#fff;', req);
-        if (req) {
-          this.tagsDic[req.name] = req.id;
-        }
-      });
+
+  /** 因為每個呼叫 API 後建立的 標籤、泳道、卡片、待辦清單 都會有其對應的 ID，
+   *  使用這個 ID，接著才能夠進行下一層級呼叫 API 建立的流程 */
+  RunCreateTrelloBoardData() {
+    let obs$ = of(null);
+
+    // 建立標籤
+    env.tags.map(label => pipe(
+      delay(3000),
+      concatMap(() => this.boardSvc.setLabel(this.boardIdStr, label).pipe(retry(3))),
+      tap((req: Label) => req && (this.tagsDic[req.name] = req.id))
+    )).forEach(pipeFunc => obs$ = obs$.pipe(pipeFunc));
+
+    // 建立泳道
+    env.lists.reverse().map(list => pipe(
+      delay(3000),
+      concatMap(() => this.boardSvc.setList(this.boardIdStr, list)),
+      tap((req: Lists) => req && (this.listsDic[req.name] = req.id))
+    )).forEach(pipeFunc => obs$ = obs$.pipe(pipeFunc));
+
+    // 建立所有卡片
+    [
+      [env.KPI, this.KPIDic],
+      [env.caseTypes, this.caseTypesDic],
+      [env.CaseCheckList1, this.CaseCheckList1_Dic],
+      [env.CaseCheckList2, this.CaseCheckList2_Dic],
+    ].forEach(([list, listDic]: [string[], Dictionary]) => {
+      list.map(name => {
+        const hascheck = env.caseTypes.includes(name);
+        const idLables = hascheck ? [this.getLabelID(name)] : null;
+        return pipe(
+          delay(2500),
+          map(() => this.listsDic['待辦項目'] as string),
+          concatMap(id => this.boardSvc.setListCard(id, name, idLables).pipe(retry(3))),
+          tap(req => req && (listDic[req.name] = { id: req.id, shortUrl: req.shortUrl, shortLink: req.shortLink }))
+        );
+      }).forEach(pipeFunc => obs$ = obs$.pipe(pipeFunc));
     });
-  }
 
-  /** 建立 泳道 */
-  addList() {
-    env.lists.reverse().forEach((list: string) => {
-      const $addList = this.boardSvc.setList(this.boardIdStr, list)
-      $addList.subscribe(req => {
-        console.log('%c 🥖 addList: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', req);
-        if (req) {
-          this.listsDic[req.name] = req.id;
-        }
-      });
+    // 建立卡片中的待辦清單
+    [
+      ['1. Test', this.KPIDic, 'Test 待辦項目', env.caseTypes, this.caseTypesDic],
+      ['Case1', this.caseTypesDic, 'CaseCheckList1', env.CaseCheckList1, this.CaseCheckList1_Dic],
+      ['Case1', this.caseTypesDic, 'CaseCheckList2', env.CaseCheckList2, this.CaseCheckList2_Dic],
+    ].forEach(([cardName, listDic, CKName, cardList, cardDic]: [string, Dictionary, string, string[], Dictionary]) => {
+
+      obs$ = obs$.pipe(
+        delay(1000),
+        concatMap(() => this.boardSvc.setCardCheckItem(listDic[cardName]['id'], CKName).pipe(retry(3)))
+      );
+
+      cardList.map(name =>  pipe(
+        delay(2500),
+        concatMap((req: Checklist) => this.boardSvc.setCardCheckItemCheckList(req.id, cardDic[name]['shortUrl']).pipe(map(() => req))),
+      )).forEach(pipeFunc => obs$ = obs$.pipe(pipeFunc));
     });
-  }
 
-  /** 建立指定泳道下的 KPI 卡片清單 */
-  addKPICard() {
-    if (!this.listsDic['年度計畫']) {
-      console.error('%c 🦐 this.listsDic[年度計畫] NULL: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', this.listsDic['年度計畫']);
-      return;
-    }
-
-    const WaitWorkListsId = this.listsDic['年度計畫'];
-
-    if (typeof (WaitWorkListsId) !== 'string') {
-      console.log('%c 🍇 typeof(WaitWorkListsId) !== "string": ', 'font-size:20px;background-color: #33A5FF;color:#fff;', WaitWorkListsId);
-      return;
-    }
-
-    this.addCardRun(WaitWorkListsId, env.KPI, this.KPIDic);
-  }
-
-  /** 建立 所有案件類型卡片清單 */
-  addCaseCard() {
-    if (!this.listsDic['待辦項目']) {
-      console.error('%c 🦐 this.listsDic[待辦項目] NULL: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', this.listsDic['待辦項目']);
-      return;
-    }
-
-    const WaitWorkListsId = this.listsDic['待辦項目'];
-
-    if (typeof (WaitWorkListsId) !== 'string') {
-      console.log('%c 🍇 typeof(WaitWorkListsId) !== "string": ', 'font-size:20px;background-color: #33A5FF;color:#fff;', WaitWorkListsId);
-      return;
-    }
-
-    this.addCardRun(WaitWorkListsId, env.caseTypes, this.caseTypesDic);
-  }
-
-  /** 建立 所有案件 所有待辦項目 的卡片清單 */
-  addWaitWorkCard() {
-    if (!this.listsDic['待辦項目']) {
-      console.error('%c 🦐 this.listsDic[待辦項目] NULL: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', this.listsDic['待辦項目']);
-      return;
-    }
-
-    const WaitWorkListsId = this.listsDic['待辦項目'];
-
-    if (typeof (WaitWorkListsId) !== 'string') {
-      console.log('%c 🍇 typeof(WaitWorkListsId) !== "string": ', 'font-size:20px;background-color: #33A5FF;color:#fff;', WaitWorkListsId);
-      return;
-    }
-
-
-    this.addCardRun(WaitWorkListsId, env.CaseCheckList1, this.CaseCheckList1_Dic);
-    this.addCardRun(WaitWorkListsId, env.CaseCheckList2, this.CaseCheckList2_Dic);
-  };
-
-  /** 將 Test 待辦項目加入到卡片中 */
-  addCaseTypeCK() {
-    this.addCheckList('1. Test', this.KPIDic, 'Test 待辦項目', env.caseTypes, this.caseTypesDic);
-  }
-
-  /** 將 CaseCheckList1、CaseCheckList2  待辦項目加入到 Case1 卡片中 */
-  addCaseCK1() {
-    this.addCheckList('Case1', this.caseTypesDic, 'CaseCheckList1', env.CaseCheckList1, this.CaseCheckList1_Dic);
-    this.addCheckList('Case1', this.caseTypesDic, 'CaseCheckList2', env.CaseCheckList2, this.CaseCheckList2_Dic);
-  }
-
-
-  /** 將 待辦項目加入到卡片中 */
-  addCheckList(SourceCardName: string, SourceCardDic: Dictionary, ckItemName: string, ck: string[], ckdic: Dictionary) {
-    if (typeof (SourceCardDic[SourceCardName]) !== 'object') {
-      console.log('%c 🍥 typeof (caseDic[SourceCardName]) !== object: ', 'font-size:20px;background-color: #42b983;color:#fff;', SourceCardDic[SourceCardName]);
-      return;
-    }
-
-    const cardId = SourceCardDic[SourceCardName]['id'] as string;
-    const $addCKItem = this.boardSvc.setCardCheckItem(cardId, ckItemName);
-
-    $addCKItem.subscribe(itemReq => {
-      console.log('%c 🍋 addCKItem: ', 'font-size:20px;background-color: #42b983;color:#fff;', itemReq);
-
-      ck.forEach((name: string) => {
-        if (typeof (ckdic[name]) !== 'object') {
-          console.log('%c 🍥 typeof (ckdic[name]) !== object: ', 'font-size:20px;background-color: #42b983;color:#fff;', ckdic[name]);
-          return;
-        }
-
-
-        const $addCKLink = this.boardSvc.setCardCheckItemCheckList(itemReq.id, ckdic[name]['shortUrl']);
-        $addCKLink.subscribe(addCKLinkReq => {
-          console.log('%c 🍌 addCKLinkReq: ', 'font-size:20px;background-color: #6EC1C2;color:#fff;', addCKLinkReq);
-        });
-      });
-    });
-  }
-
-  /** === 將建立卡片的清單抽離 === */
-  addCardRun(WaitWorkListsId: string, list: string[], dic: Dictionary) {
-    list.forEach((name: string) => {
-      const hascheck = env.caseTypes.includes(name)
-      const $addCard = this.boardSvc.setListCard(WaitWorkListsId, name, hascheck ? [this.getLabelID(name)] : null)
-      of(null).pipe(delay(10 * 1000), concatMap(() => $addCard)).subscribe(req => {
-        console.log('%c 🍌 addCard: ', 'font-size:20px;background-color: #6EC1C2;color:#fff;', req);
-        if (req) {
-          dic[req.name] = { id: req.id, shortUrl: req.shortUrl, shortLink: req.shortLink };
-        }
-        console.log('%c =============================================: ', 'font-size:20px;background-color: #E41A6A;color:#fff;');
-      });
-    });
+    obs$.subscribe();
   }
 
   getLabelID(naem: string): string {
