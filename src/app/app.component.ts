@@ -2,6 +2,8 @@ import { Component } from '@angular/core';
 import { TrelloBoardService } from './svc/trello-board.service';
 import { environment as env } from 'src/environments/environment';
 import { Dictionary } from './models/dictionary';
+import { of } from 'rxjs';
+import { concatMap, delay } from 'rxjs/operators';
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -154,7 +156,7 @@ export class AppComponent {
     list.forEach((name: string) => {
       const hascheck = env.caseTypes.includes(name)
       const $addCard = this.boardSvc.setListCard(WaitWorkListsId, name, hascheck ? [this.getLabelID(name)] : null)
-      $addCard.subscribe(req => {
+      of(null).pipe(delay(10 * 1000), concatMap(() => $addCard)).subscribe(req => {
         console.log('%c 🍌 addCard: ', 'font-size:20px;background-color: #6EC1C2;color:#fff;', req);
         if (req) {
           dic[req.name] = { id: req.id, shortUrl: req.shortUrl, shortLink: req.shortLink };
