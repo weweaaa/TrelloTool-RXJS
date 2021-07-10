@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { TrelloBoardService } from './svc/trello-board.service';
 import { environment as env } from 'src/environments/environment';
+import { Dictionary } from './models/dictionary';
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -8,137 +9,163 @@ import { environment as env } from 'src/environments/environment';
 })
 export class AppComponent {
 
-  constructor(private boardService: TrelloBoardService) {
-    if(!env.key || !env.token){
+  checkInit = true;
+  boardIdStr = env.boardId;
+
+  tagsDic = new Dictionary;
+  listsDic = new Dictionary;
+  KPIDic = new Dictionary;
+  caseTypesDic = new Dictionary;
+  CaseCheckList1_Dic = new Dictionary;
+  CaseCheckList2_Dic = new Dictionary;
+
+  constructor(private boardSvc: TrelloBoardService) {
+    if (!env.key || !env.token) {
+      this.checkInit = false;
       alert("[*] 請記得到 https://trello.com/app-key/ 上取得 key 及 Token")
     }
-  }
 
-  getBoard() {
-    this.boardService.getBoard(env.boardId).subscribe(rep => {
-      console.log('%c 🍧 rep: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-    })
+    if(!env.boardId){
+      this.checkInit = false;
+      alert("[*] 請記得開啟 Trello 看板網址，複製網址上的 ID。\n  - 例如：'https://trello.com/b/oA2raDa2/Test'\n  - 則 ID 就是 【oA2raDa2】")
+    }
   }
-
-  // ------------------------------
-  // Label
-  // ------------------------------
-  getLabel() {
-    this.boardService.getLabels(env.boardId).subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
+  /** 建立 案件類型 標籤 */
+  addLabel() {
+    env.tags.forEach((label: string) => {
+      const $addLabel = this.boardSvc.setLabel(this.boardIdStr, label)
+      $addLabel.subscribe(req => {
+        console.log('%c 🌽 addLabel: ', 'font-size:20px;background-color: #EA7E5C;color:#fff;', req);
+        if (req) {
+          this.tagsDic[req.name] = req.id;
+        }
+      });
     });
   }
 
-  setLabel() {
-    this.boardService.setLabel(env.boardId, 'IND').subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
+  /** 建立 泳道 */
+  addList() {
+    env.lists.reverse().forEach((list: string) => {
+      const $addList = this.boardSvc.setList(this.boardIdStr, list)
+      $addList.subscribe(req => {
+        console.log('%c 🥖 addList: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', req);
+        if (req) {
+          this.listsDic[req.name] = req.id;
+        }
+      });
     });
   }
 
-  putLabel(labelId: string) {
-    // 60e46f20ebff3d4c6d9cd24b
-    this.boardService.putLabel(labelId, 'XDXDXDXD', 'red').subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
-    });
+  /** 建立指定泳道下的 KPI 卡片清單 */
+  addKPICard() {
+    if (!this.listsDic['年度計畫']) {
+      console.error('%c 🦐 this.listsDic[年度計畫] NULL: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', this.listsDic['年度計畫']);
+      return;
+    }
+
+    const WaitWorkListsId = this.listsDic['年度計畫'];
+
+    if (typeof (WaitWorkListsId) !== 'string') {
+      console.log('%c 🍇 typeof(WaitWorkListsId) !== "string": ', 'font-size:20px;background-color: #33A5FF;color:#fff;', WaitWorkListsId);
+      return;
+    }
+
+    this.addCardRun(WaitWorkListsId, env.KPI, this.KPIDic);
+  }
+
+  /** 建立 所有案件類型卡片清單 */
+  addCaseCard() {
+    if (!this.listsDic['待辦項目']) {
+      console.error('%c 🦐 this.listsDic[待辦項目] NULL: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', this.listsDic['待辦項目']);
+      return;
+    }
+
+    const WaitWorkListsId = this.listsDic['待辦項目'];
+
+    if (typeof (WaitWorkListsId) !== 'string') {
+      console.log('%c 🍇 typeof(WaitWorkListsId) !== "string": ', 'font-size:20px;background-color: #33A5FF;color:#fff;', WaitWorkListsId);
+      return;
+    }
+
+    this.addCardRun(WaitWorkListsId, env.caseTypes, this.caseTypesDic);
+  }
+
+  /** 建立 所有案件 所有待辦項目 的卡片清單 */
+  addWaitWorkCard() {
+    if (!this.listsDic['待辦項目']) {
+      console.error('%c 🦐 this.listsDic[待辦項目] NULL: ', 'font-size:20px;background-color: #2EAFB0;color:#fff;', this.listsDic['待辦項目']);
+      return;
+    }
+
+    const WaitWorkListsId = this.listsDic['待辦項目'];
+
+    if (typeof (WaitWorkListsId) !== 'string') {
+      console.log('%c 🍇 typeof(WaitWorkListsId) !== "string": ', 'font-size:20px;background-color: #33A5FF;color:#fff;', WaitWorkListsId);
+      return;
+    }
+
+
+    this.addCardRun(WaitWorkListsId, env.CaseCheckList1, this.CaseCheckList1_Dic);
+    this.addCardRun(WaitWorkListsId, env.CaseCheckList2, this.CaseCheckList2_Dic);
+  };
+
+  /** 將 Test 待辦項目加入到卡片中 */
+  addCaseTypeCK() {
+    this.addCheckList('1. Test', this.KPIDic, 'Test 待辦項目', env.caseTypes, this.caseTypesDic);
+  }
+
+  /** 將 CaseCheckList1、CaseCheckList2  待辦項目加入到 Case1 卡片中 */
+  addCaseCK1() {
+    this.addCheckList('Case1', this.caseTypesDic, 'CaseCheckList1', env.CaseCheckList1, this.CaseCheckList1_Dic);
+    this.addCheckList('Case1', this.caseTypesDic, 'CaseCheckList2', env.CaseCheckList2, this.CaseCheckList2_Dic);
   }
 
 
+  /** 將 待辦項目加入到卡片中 */
+  addCheckList(SourceCardName: string, SourceCardDic: Dictionary, ckItemName: string, ck: string[], ckdic: Dictionary) {
+    if (typeof (SourceCardDic[SourceCardName]) !== 'object') {
+      console.log('%c 🍥 typeof (caseDic[SourceCardName]) !== object: ', 'font-size:20px;background-color: #42b983;color:#fff;', SourceCardDic[SourceCardName]);
+      return;
+    }
 
-  // ------------------------------
-  // List
-  // ------------------------------
-  getList() {
-    this.boardService.getList(env.boardId).subscribe(rep => {
+    const cardId = SourceCardDic[SourceCardName]['id'] as string;
+    const $addCKItem = this.boardSvc.setCardCheckItem(cardId, ckItemName);
 
-      if (rep) {
-        console.log('%c 🍧 rep: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep.map((val) => {
-          this.getListCard(val.id);
-          return val.id;
-        }));
-      }
+    $addCKItem.subscribe(itemReq => {
+      console.log('%c 🍋 addCKItem: ', 'font-size:20px;background-color: #42b983;color:#fff;', itemReq);
+
+      ck.forEach((name: string) => {
+        if (typeof (ckdic[name]) !== 'object') {
+          console.log('%c 🍥 typeof (ckdic[name]) !== object: ', 'font-size:20px;background-color: #42b983;color:#fff;', ckdic[name]);
+          return;
+        }
+
+
+        const $addCKLink = this.boardSvc.setCardCheckItemCheckList(itemReq.id, ckdic[name]['shortUrl']);
+        $addCKLink.subscribe(addCKLinkReq => {
+          console.log('%c 🍌 addCKLinkReq: ', 'font-size:20px;background-color: #6EC1C2;color:#fff;', addCKLinkReq);
+        });
+      });
     });
   }
 
-  setList() {
-    this.boardService.setList(env.boardId, '測試創建泳道').subscribe(rep => {
-
-      if (rep) {
-        console.log('%c 🍧 rep: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
+  /** === 將建立卡片的清單抽離 === */
+  addCardRun(WaitWorkListsId: string, list: string[], dic: Dictionary) {
+    list.forEach((name: string) => {
+      const hascheck = env.caseTypes.includes(name)
+      const $addCard = this.boardSvc.setListCard(WaitWorkListsId, name, hascheck ? [this.getLabelID(name)] : null)
+      $addCard.subscribe(req => {
+        console.log('%c 🍌 addCard: ', 'font-size:20px;background-color: #6EC1C2;color:#fff;', req);
+        if (req) {
+          dic[req.name] = { id: req.id, shortUrl: req.shortUrl, shortLink: req.shortLink };
+        }
+        console.log('%c =============================================: ', 'font-size:20px;background-color: #E41A6A;color:#fff;');
+      });
     });
   }
 
-
-  // ------------------------------
-  // List
-  // ------------------------------
-  getListCard(id: string) {
-    // 60e30b05e274972cdb88f39f
-    this.boardService.getListCard(id).subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
-    });
-  }
-
-  setListCard(id: string) {
-    // 60e30b05e274972cdb88f39f
-    this.boardService.setListCard('60e30b05e274972cdb88f39f', '測試創建卡片').subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
-    });
-  }
-
-
-
-  // ------------------------------
-  // CheckItemCheckList
-  // ------------------------------
-  getCardCheckItem(cardId: string) {
-    // 60e30d012c83ac7d375af266
-    this.boardService.getCardCheckItem(cardId).subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
-    });
-  }
-
-  setCardCheckItem(cardId: string) {
-    // 60e30d012c83ac7d375af266
-    this.boardService.setCardCheckItem('60e30d012c83ac7d375af266', '測試創建待辦清單').subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
-    });
-  }
-
-
-  // ------------------------------
-  // CheckItemCheckList
-  // ------------------------------
-  getCardCheckItemCheckList(checkItemId: string) {
-    // 60e30d283edb1237a9b78b7c
-    this.boardService.getCardCheckItemCheckList('60e30d283edb1237a9b78b7c').subscribe(rep => {
-      if (rep) {
-        console.log('%c 🍧 getListCard: ', 'font-size:20px;background-color: #93C0A4;color:#fff;', rep);
-      }
-    });
-  }
-
-  setCardCheckItemCheckList(checkItemId: string) {
-    // 60e30d283edb1237a9b78b7c
-    // https://trello.com/c/cIGKbxsn
-    this.boardService.setCardCheckItemCheckList('60e30d283edb1237a9b78b7c', 'https://trello.com/c/cIGKbxsn').subscribe(rep => {
-      if (rep) {
-        console.log('%c 🥕 rep: ', 'font-size:20px;background-color: #FFDD4D;color:#fff;', rep);
-      }
-    });
+  getLabelID(naem: string): string {
+    if (naem === 'Case1') { return this.tagsDic['LabelTest_1'] as string; }
+    if (naem === 'Case2') { return this.tagsDic['LabelTest_2'] as string; }
   }
 }

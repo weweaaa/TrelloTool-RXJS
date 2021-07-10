@@ -1,0 +1,18 @@
+<ng-container *ngIf="!checkInit">
+  [*] 請記得到 https://trello.com/app-key/ 上取得 key 及 Token<br/>
+  [*] 請記得開啟 Trello 看板網址，複製網址上的 ID。<br/>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- 例如：'https://trello.com/b/oA2raDa2/Test'<br/>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- 則 ID 就是 【oA2raDa2】
+</ng-container>
+
+
+<ng-container *ngIf="checkInit">
+  <h2>依序往下點，相當於是一步一步驟觸發 API 發送</h2>
+  <button (click)="addLabel()">addLabel</button><br />
+  <button (click)="addList()">addList</button><br />
+  <button (click)="addKPICard()">addKPICard</button><br />
+  <button (click)="addCaseCard()">addCaseCard</button><br />
+  <button (click)="addWaitWorkCard()">addWaitWorkCard</button><br />
+  <button (click)="addCaseTypeCK()">addCaseTypeCK</button><br />
+  <button (click)="addCaseCK1()">addCaseCK1</button><br />
+</ng-container>
