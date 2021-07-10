@@ -65,12 +65,16 @@ export class AppComponent {
       list.map(name => {
         const hascheck = env.caseTypes.includes(name);
         const idLables = hascheck ? [this.getLabelID(name)] : null;
+
+        // 產生 Observable 資料流
         return pipe(
           delay(2500),
-          map(() => this.listsDic['待辦項目'] as string),
-          concatMap(id => this.boardSvc.setListCard(id, name, idLables).pipe(retry(3))),
-          tap(req => req && (listDic[req.name] = { id: req.id, shortUrl: req.shortUrl, shortLink: req.shortLink }))
+          map(() => this.listsDic['待辦項目'] as string), // 在此 pipe 資料流中，產生資料後往下傳遞
+          concatMap(id => this.boardSvc.setListCard(id, name, idLables).pipe(retry(3))),  // 合併輸出資料流
+          tap(req => req && (listDic[req.name] = { id: req.id, shortUrl: req.shortUrl, shortLink: req.shortLink })) // 另外開資料流來做事情
         );
+
+        // 將 map 輸出的 pipe 資料流，統一使用 obs$ 串接起來
       }).forEach(pipeFunc => obs$ = obs$.pipe(pipeFunc));
     });
 
@@ -86,8 +90,12 @@ export class AppComponent {
         concatMap(() => this.boardSvc.setCardCheckItem(listDic[cardName]['id'], CKName).pipe(retry(3)))
       );
 
+      // 此段 pipe 承接到的資料流為從 setCardCheckItem 結束後帶過來的資料流
       cardList.map(name =>  pipe(
         delay(2500),
+
+        // 在這裡 req 結果為 setCardCheckItem 訂閱後取得的值
+        // 要特別注意的是 .pipe(map(() => req)) 此段的目的為，確保 cardList.map 每次迴圈跑的時候 concatMap 中的 req 皆為 setCardCheckItem 帶入的資料流
         concatMap((req: Checklist) => this.boardSvc.setCardCheckItemCheckList(req.id, cardDic[name]['shortUrl']).pipe(map(() => req))),
       )).forEach(pipeFunc => obs$ = obs$.pipe(pipeFunc));
     });
